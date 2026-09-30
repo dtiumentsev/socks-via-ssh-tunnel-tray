@@ -172,6 +172,57 @@ function Is-Port-Occupied {
     return ($null -ne $listener)
 }
 
+function Stop-ExistingSshOnPort {
+    $listeners = Get-NetTCPConnection `
+        -LocalAddress $bindAddress `
+        -LocalPort $port `
+        -State Listen `
+        -ErrorAction SilentlyContinue
+
+    foreach ($listener in @($listeners)) {
+        try {
+            $process = Get-Process `
+                -Id $listener.OwningProcess `
+                -ErrorAction Stop
+
+            if ($process.ProcessName -ne "ssh") {
+                continue
+            }
+
+            Stop-Process `
+                -Id $process.Id `
+                -Force `
+                -ErrorAction Stop
+
+            Wait-Process `
+                -Id $process.Id `
+                -Timeout 3 `
+                -ErrorAction SilentlyContinue
+        }
+        catch {
+            # Ignore a listener/process that disappeared during the check.
+        }
+    }
+}
+
+function Wait-ForPortToBeFree {
+    param(
+        [int]$TimeoutSeconds = 3
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+
+    while ((Get-Date) -lt $deadline) {
+        if (-not (Is-Port-Occupied)) {
+            return $true
+        }
+
+        Start-Sleep -Milliseconds 100
+    }
+
+    return (-not (Is-Port-Occupied))
+}
+
 function Update-TrayIcon {
     $alive = Is-Port-Listening
 
@@ -215,9 +266,9 @@ function Stop-Ssh {
 
 function Start-Ssh {
     # Do not start a second SSH if local SOCKS port is already occupied.
-	if (Is-Port-Occupied) {
-		return
-	}
+    if (Is-Port-Occupied) {
+        return
+    }
 
     try {
         $script:sshProcess = Start-Process `
@@ -352,7 +403,12 @@ $timer.Add_Tick({
 # Start
 # ---------------------------------------------------------------
 
-Start-Ssh
+Stop-ExistingSshOnPort
+
+if (Wait-ForPortToBeFree) {
+    Start-Ssh
+}
+
 Update-TrayIcon
 
 $timer.Start()

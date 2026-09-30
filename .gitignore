@@ -1,0 +1,27 @@
+# Local machine configuration: may contain hostnames, usernames and ports
+config.ps1
+
+# Private SSH keys and certificates
+*.pem
+*.ppk
+id_rsa
+id_ed25519
+*.key
+
+# Local logs and runtime state
+*.log
+logs/
+state/
+*.pid
+
+# Windows / IDE files
+Thumbs.db
+Desktop.ini
+.vscode/
+.idea/
+
+# Temporary and backup files
+*.tmp
+*.bak
+*.swp
+*~

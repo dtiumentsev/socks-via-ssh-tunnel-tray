@@ -4,12 +4,9 @@
 $SshTunnelConfig = @{
     SshPath    = "$env:WINDIR\System32\OpenSSH\ssh.exe"
     KeyPath    = "$env:USERPROFILE\.ssh\id_rsa"
-    SshHost    = "tunnel-user@ssh.example.net"
+    SshHost    = "tunnel-user@111.111.11.111"
     RemotePort = 22
 
     BindAddress = "127.0.0.1"
     LocalPort  = 1080
-
-    ReconnectDelaySeconds = 5
-    CheckIntervalMs       = 1000
 }

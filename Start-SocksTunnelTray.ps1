@@ -21,21 +21,64 @@ if (-not $createdNew) {
     exit 0
 }
 
-$configPath = Join-Path $PSScriptRoot "config.ps1"
+function Exit-StartupError {
+    param(
+        [string]$Message
+    )
 
-if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
     [System.Windows.Forms.MessageBox]::Show(
-        "Configuration file was not found:`n$configPath`n`n" +
-        "Copy config.example.ps1 to config.ps1 and configure it.",
+        $Message,
         "SSH SOCKS Tunnel",
         "OK",
         "Error"
     ) | Out-Null
 
+    if ($mutex) {
+        try {
+            $mutex.ReleaseMutex()
+        }
+        catch {
+            # Mutex may already be released or not owned.
+        }
+
+        $mutex.Dispose()
+    }
+
     exit 1
 }
 
+$configPath = Join-Path $PSScriptRoot "config.ps1"
+
+if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
+    Exit-StartupError (
+        "Configuration file was not found:`n$configPath`n`n" +
+        "Copy config.example.ps1 to config.ps1 and configure it."
+    )
+}
+
 . $configPath
+
+$requiredConfigKeys = @(
+    "SshPath"
+    "KeyPath"
+    "SshHost"
+    "RemotePort"
+    "BindAddress"
+    "LocalPort"
+)
+
+foreach ($key in $requiredConfigKeys) {
+    if (
+        -not $SshTunnelConfig.ContainsKey($key) -or
+        [string]::IsNullOrWhiteSpace([string]$SshTunnelConfig[$key])
+    ) {
+        Exit-StartupError "Missing or empty config value: $key`n`nFile:`n$configPath"
+    }
+}
+
+# ---------------------------------------------------------------
+# SSH settings
+# ---------------------------------------------------------------
 
 $sshPath                 = $SshTunnelConfig.SshPath
 $keyPath                 = $SshTunnelConfig.KeyPath
@@ -43,18 +86,6 @@ $sshHost                 = $SshTunnelConfig.SshHost
 $remotePort              = [int]$SshTunnelConfig.RemotePort
 $bindAddress             = $SshTunnelConfig.BindAddress
 $port                    = [int]$SshTunnelConfig.LocalPort
-$reconnectDelaySeconds   = [int]$SshTunnelConfig.ReconnectDelaySeconds
-$checkIntervalMs         = [int]$SshTunnelConfig.CheckIntervalMs
-
-# ---------------------------------------------------------------
-# SSH settings
-# ---------------------------------------------------------------
-
-$sshPath    = "C:\Windows\System32\OpenSSH\ssh.exe"
-$keyPath    = "C:\Users\$env:USERNAME\.ssh\id_rsa"
-$sshHost    = "tunneluser@104.223.98.185"
-$port       = 1080
-$remotePort = 2229
 
 $reconnectDelaySeconds = 5
 $checkIntervalMs       = 1000
@@ -67,36 +98,20 @@ $iconFolder   = Join-Path $PSScriptRoot "icons"
 $iconUpPath   = Join-Path $iconFolder "up.ico"
 $iconDownPath = Join-Path $iconFolder "down.ico"
 
-if (-not (Test-Path $sshPath)) {
-    [System.Windows.Forms.MessageBox]::Show(
-        "ssh.exe not found:`n$sshPath",
-        "SSH SOCKS Tunnel"
-    ) | Out-Null
-    exit 1
+if (-not (Test-Path -LiteralPath $sshPath -PathType Leaf)) {
+    Exit-StartupError "ssh.exe not found:`n$sshPath"
 }
 
-if (-not (Test-Path $keyPath)) {
-    [System.Windows.Forms.MessageBox]::Show(
-        "SSH key not found:`n$keyPath",
-        "SSH SOCKS Tunnel"
-    ) | Out-Null
-    exit 1
+if (-not (Test-Path -LiteralPath $keyPath -PathType Leaf)) {
+    Exit-StartupError "SSH key not found:`n$keyPath"
 }
 
-if (-not (Test-Path $iconUpPath)) {
-    [System.Windows.Forms.MessageBox]::Show(
-        "Icon not found:`n$iconUpPath",
-        "SSH SOCKS Tunnel"
-    ) | Out-Null
-    exit 1
+if (-not (Test-Path -LiteralPath $iconUpPath -PathType Leaf)) {
+    Exit-StartupError "Icon not found:`n$iconUpPath"
 }
 
-if (-not (Test-Path $iconDownPath)) {
-    [System.Windows.Forms.MessageBox]::Show(
-        "Icon not found:`n$iconDownPath",
-        "SSH SOCKS Tunnel"
-    ) | Out-Null
-    exit 1
+if (-not (Test-Path -LiteralPath $iconDownPath -PathType Leaf)) {
+    Exit-StartupError "Icon not found:`n$iconDownPath"
 }
 
 $iconUp   = New-Object System.Drawing.Icon($iconUpPath)
@@ -106,7 +121,7 @@ $iconDown = New-Object System.Drawing.Icon($iconDownPath)
 # SSH command: preserved from your original working script
 # ---------------------------------------------------------------
 
-$arguments = "-4 -i `"$keyPath`" -p $remotePort -D 127.0.0.1:$port -N " +
+$arguments = "-4 -i `"$keyPath`" -p $remotePort -D ${bindAddress}:$port -N " +
              "-o ExitOnForwardFailure=yes " +
              "-o ServerAliveInterval=15 " +
              "-o ServerAliveCountMax=3 " +
@@ -127,6 +142,7 @@ $script:nextStartTime = Get-Date
 
 function Is-Port-Listening {
     $listener = Get-NetTCPConnection `
+        -LocalAddress $bindAddress `
         -LocalPort $port `
         -State Listen `
         -ErrorAction SilentlyContinue
@@ -147,7 +163,7 @@ function Update-TrayIcon {
 
     if ($alive) {
         $tray.Icon = $iconUp
-        $tray.Text = "SSH SOCKS: connected (127.0.0.1:$port)"
+        $tray.Text = "SSH SOCKS: connected (${bindAddress}:$port)"
         $statusItem.Text = "Status: connected"
     }
     else {
@@ -262,7 +278,7 @@ $tray.ContextMenuStrip = $menu
 $tray.Add_DoubleClick({
     if (Is-Port-Listening) {
         [System.Windows.Forms.MessageBox]::Show(
-            "Tunnel is active.`n`nSOCKS5: 127.0.0.1:$port`nSSH PID: $($script:sshProcess.Id)",
+            "Tunnel is active.`n`nSOCKS5: ${bindAddress}:$port`nSSH PID: $($script:sshProcess.Id)",
             "SSH SOCKS Tunnel",
             "OK",
             "Information"
@@ -292,7 +308,7 @@ $timer.Add_Tick({
         return
     }
 
-    # If SSH exited, schedule a new attempt in 5 seconds.
+    # If SSH exited, schedule the next attempt using the configured delay.
     if ($script:sshProcess -and $script:sshProcess.HasExited) {
         $script:sshProcess = $null
         $script:nextStartTime = (Get-Date).AddSeconds($reconnectDelaySeconds)

@@ -180,15 +180,19 @@ function Stop-ExistingSshOnPort {
         -ErrorAction SilentlyContinue
 
     foreach ($listener in @($listeners)) {
+        $process = Get-Process `
+            -Id $listener.OwningProcess `
+            -ErrorAction SilentlyContinue
+
+        if (-not $process) {
+            continue
+        }
+
+        if ($process.ProcessName -ne "ssh") {
+            continue
+        }
+
         try {
-            $process = Get-Process `
-                -Id $listener.OwningProcess `
-                -ErrorAction Stop
-
-            if ($process.ProcessName -ne "ssh") {
-                continue
-            }
-
             Stop-Process `
                 -Id $process.Id `
                 -Force `
@@ -200,7 +204,15 @@ function Stop-ExistingSshOnPort {
                 -ErrorAction SilentlyContinue
         }
         catch {
-            # Ignore a listener/process that disappeared during the check.
+            [System.Windows.Forms.MessageBox]::Show(
+                "Unable to stop the existing SSH process on ${bindAddress}:$port.`n`n" +
+                "Run this tray application with the same permissions as the existing SSH process, " +
+                "or stop the old tunnel first.`n`n" +
+                "Details:`n$($_.Exception.Message)",
+                "SSH SOCKS Tunnel",
+                "OK",
+                "Warning"
+            ) | Out-Null
         }
     }
 }

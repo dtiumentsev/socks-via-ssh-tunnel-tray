@@ -330,7 +330,7 @@ $timer.Add_Tick({
         return
     }
 
-    # If SSH exited, schedule the next attempt using the configured delay.
+    # If SSH exited, retry after the fixed reconnect delay.
     if ($script:sshProcess -and $script:sshProcess.HasExited) {
         $script:sshProcess = $null
         $script:nextStartTime = (Get-Date).AddSeconds($reconnectDelaySeconds)

@@ -147,6 +147,28 @@ function Is-Port-Listening {
         -State Listen `
         -ErrorAction SilentlyContinue
 
+    if (-not $listener) {
+        return $false
+    }
+
+    if (-not $script:sshProcess) {
+        return $false
+    }
+
+    if ($script:sshProcess.HasExited) {
+        return $false
+    }
+
+    return ($listener.OwningProcess -contains $script:sshProcess.Id)
+}
+
+function Is-Port-Occupied {
+    $listener = Get-NetTCPConnection `
+        -LocalAddress $bindAddress `
+        -LocalPort $port `
+        -State Listen `
+        -ErrorAction SilentlyContinue
+
     return ($null -ne $listener)
 }
 
@@ -193,9 +215,9 @@ function Stop-Ssh {
 
 function Start-Ssh {
     # Do not start a second SSH if local SOCKS port is already occupied.
-    if (Is-Port-Listening) {
-        return
-    }
+	if (Is-Port-Occupied) {
+		return
+	}
 
     try {
         $script:sshProcess = Start-Process `
@@ -317,7 +339,7 @@ $timer.Add_Tick({
     # No active managed SSH and port is free: reconnect when delay expires.
     if (
         -not $script:sshProcess -and
-        -not (Is-Port-Listening) -and
+        -not (Is-Port-Occupied) -and
         (Get-Date) -ge $script:nextStartTime
     ) {
         Start-Ssh

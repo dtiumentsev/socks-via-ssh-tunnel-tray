@@ -14,6 +14,7 @@ A lightweight Windows PowerShell controller for a local SSH SOCKS5 tunnel.
 
 ## Architecture
 
+```text
 Chrome
   │
   ├── Обычные домены ─────────────────────► Direct connection
@@ -34,6 +35,7 @@ Chrome
           │
           ▼
      api.example.dev
+```
 
 ## Requirements
 

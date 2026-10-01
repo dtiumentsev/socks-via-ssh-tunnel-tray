@@ -10,19 +10,19 @@ A lightweight Windows PowerShell controller for a local SSH SOCKS5 tunnel.
 - Manual start, stop, reconnect, and exit actions
 - No persistent CMD window
 - Single-instance protection through a named mutex
-- Per-domain routing with FoxyProxy
+- Per-domain routing with FoxyProxy extension
 
 ## Architecture
 
 ```text
 Chrome
   │
-  ├── Обычные домены ─────────────────────► Direct connection
+  ├── Regular domains ─────────────────────► Direct connection
   │
   └── api.example.dev
           │
           ▼
-     FoxyProxy pattern rule
+     FoxyProxy extension pattern rule
           │
           ▼
      SOCKS5: 127.0.0.1:1080
@@ -52,7 +52,7 @@ Chrome
 3. Edit `config.ps1`.
 4. Run `Start-SocksTunnelTray.vbs`.
 
-## FoxyProxy setup
+## FoxyProxy extension setup
 
 Configure SOCKS5:
 - Host: `127.0.0.1`

@@ -88,7 +88,7 @@ $bindAddress             = $SshTunnelConfig.BindAddress
 $port                    = [int]$SshTunnelConfig.LocalPort
 
 $reconnectDelaySeconds = 5
-$checkIntervalMs       = 1000
+$checkIntervalMs       = 5000
 
 # ---------------------------------------------------------------
 # Icons
@@ -147,92 +147,11 @@ function Is-Port-Listening {
         -State Listen `
         -ErrorAction SilentlyContinue
 
-    if (-not $listener) {
-        return $false
-    }
-
-    if (-not $script:sshProcess) {
-        return $false
-    }
-
-    if ($script:sshProcess.HasExited) {
-        return $false
-    }
-
-    return ($listener.OwningProcess -contains $script:sshProcess.Id)
-}
-
-function Is-Port-Occupied {
-    $listener = Get-NetTCPConnection `
-        -LocalAddress $bindAddress `
-        -LocalPort $port `
-        -State Listen `
-        -ErrorAction SilentlyContinue
-
     return ($null -ne $listener)
 }
 
-function Stop-ExistingSshOnPort {
-    $listeners = Get-NetTCPConnection `
-        -LocalAddress $bindAddress `
-        -LocalPort $port `
-        -State Listen `
-        -ErrorAction SilentlyContinue
-
-    foreach ($listener in @($listeners)) {
-        $process = Get-Process `
-            -Id $listener.OwningProcess `
-            -ErrorAction SilentlyContinue
-
-        if (-not $process) {
-            continue
-        }
-
-        if ($process.ProcessName -ne "ssh") {
-            continue
-        }
-
-        try {
-            Stop-Process `
-                -Id $process.Id `
-                -Force `
-                -ErrorAction Stop
-
-            Wait-Process `
-                -Id $process.Id `
-                -Timeout 3 `
-                -ErrorAction SilentlyContinue
-        }
-        catch {
-            [System.Windows.Forms.MessageBox]::Show(
-                "Unable to stop the existing SSH process on ${bindAddress}:$port.`n`n" +
-                "Run this tray application with the same permissions as the existing SSH process, " +
-                "or stop the old tunnel first.`n`n" +
-                "Details:`n$($_.Exception.Message)",
-                "SSH SOCKS Tunnel",
-                "OK",
-                "Warning"
-            ) | Out-Null
-        }
-    }
-}
-
-function Wait-ForPortToBeFree {
-    param(
-        [int]$TimeoutSeconds = 3
-    )
-
-    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-
-    while ((Get-Date) -lt $deadline) {
-        if (-not (Is-Port-Occupied)) {
-            return $true
-        }
-
-        Start-Sleep -Milliseconds 100
-    }
-
-    return (-not (Is-Port-Occupied))
+function Is-Port-Occupied {
+    return Is-Port-Listening
 }
 
 function Update-TrayIcon {
@@ -415,12 +334,7 @@ $timer.Add_Tick({
 # Start
 # ---------------------------------------------------------------
 
-Stop-ExistingSshOnPort
-
-if (Wait-ForPortToBeFree) {
-    Start-Ssh
-}
-
+Start-Ssh
 Update-TrayIcon
 
 $timer.Start()
